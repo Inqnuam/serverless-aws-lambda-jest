@@ -1,6 +1,7 @@
 {
   "name": "serverless-aws-lambda-jest",
-  "version": "1.0.2",
+  "description": "Jest Integration Test for serverless-aws-lambda",
+  "version": "1.0.3",
   "main": "./dist/index.js",
   "typings": "./dist/index.d.ts",
   "author": "Inqnuam",

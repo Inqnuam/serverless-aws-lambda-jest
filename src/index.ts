@@ -1,10 +1,12 @@
 import type { SlsAwsLambdaPlugin } from "serverless-aws-lambda/defineConfig";
-const jest = require("jest");
-
 import { writeFile } from "fs/promises";
+import path from "path";
+const jest = require("jest");
+const pluginDir = `${process.cwd()}/node_modules/serverless-aws-lambda-jest/`;
 
 interface IJestPluginOptions {
   configFile: string;
+  oneshot?: boolean;
 }
 
 const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
@@ -18,36 +20,39 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
           throw new Error("jest config file path is required");
         }
 
-        const confFile = require(`${process.cwd()}/${options.configFile}`);
-
-        const jestArgs = ["--watch", "true", "--config", options.configFile, "--rootDir", ".", "--roots", "node_modules/serverless-aws-lambda-jest/"];
-
+        const confFile = require(path.resolve(options.configFile));
+        const roots = [".", pluginDir];
         if (confFile.roots) {
-          const customRoots: string[] = confFile.rootDir ? confFile.roots.map((x: string) => x.replace("<rootDir>", confFile.rootDir)) : confFile.roots;
-
-          customRoots.forEach((x) => {
-            jestArgs.push("--roots", x);
-          });
-        } else if (confFile.rootDir) {
-          jestArgs.push("--roots", confFile.rootDir);
+          roots.push(...confFile.roots);
         }
-
         try {
-          await jest.run(jestArgs);
+          const result = await jest.runCLI(
+            {
+              ...confFile,
+              watch: false,
+              watchAll: !options.oneshot,
+              roots,
+            },
+            ["."]
+          );
+          if (options.oneshot) {
+            this.stop();
+            process.exit(result.results.success ? 0 : 1);
+          }
         } catch (error) {
           console.log(error);
           this.stop();
+          process.exit(1);
         }
       },
     },
     buildCallback: async function (result, isRebuild) {
       if (isRebuild) {
-        writeFile("node_modules/serverless-aws-lambda-jest/watch.js", Math.random().toString());
+        writeFile(`${pluginDir}/watch.js`, Math.random().toString());
       }
     },
   };
 };
 
 export default jestPlugin;
-
 export { jestPlugin };
