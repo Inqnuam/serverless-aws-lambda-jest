@@ -1,4 +1,4 @@
-import { SlsAwsLambdaPlugin } from "serverless-aws-lambda/defineConfig";
+import type { SlsAwsLambdaPlugin } from "serverless-aws-lambda/defineConfig";
 const jest = require("jest");
 
 import { writeFile } from "fs/promises";
