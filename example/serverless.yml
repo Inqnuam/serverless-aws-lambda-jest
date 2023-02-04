@@ -1,0 +1,27 @@
+service: my-project
+
+frameworkVersion: "3"
+
+package:
+  individually: true
+
+plugins:
+  - serverless-aws-lambda
+
+custom:
+  serverless-aws-lambda:
+    configPath: ./config.default
+provider:
+  name: aws
+  runtime: nodejs18.x
+  versionFunctions: false
+  region: eu-west-3
+  deploymentMethod: direct
+
+functions:
+  lambda:
+    handler: src/lambdas/myAwsomeLambda.default
+    events:
+      - httpApi:
+          path: /lambda
+          method: any
