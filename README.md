@@ -50,4 +50,5 @@ module.exports = defineConfig({
 
 - serverless-aws-lambda's `LOCAL_PORT` env variable is injected into process.env of your test files which could be used to make offline request against the local server.
 - `oneshot` option could be used inside your CI/CD pipeline to launch Integrations Tests and exit the process after the first test sequence. Node Process will exit with `0` code, or `1` if Jest tests fails.
+- use `coverage` option to generate coverage result json file.
 - See an [example project](example)

@@ -7,6 +7,9 @@ module.exports = defineConfig({
     jestPlugin({
       configFile: "./jest.it.config.js",
       oneshot,
+      coverage: {
+        outDir: "./coverage/",
+      },
     }),
   ],
 });
