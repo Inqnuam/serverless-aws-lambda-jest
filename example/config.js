@@ -9,6 +9,8 @@ module.exports = defineConfig({
       oneshot,
       coverage: {
         outDir: "./coverage/",
+        json: true,
+        badge: true,
       },
     }),
   ],

@@ -4,7 +4,7 @@
 
 ### Requirements
 
-- serverless-aws-lambda
+- [serverless-aws-lambda](https://github.com/Inqnuam/serverless-aws-lambda)
 - jest
 
 ## Installation
@@ -17,13 +17,14 @@ npm install -D serverless-aws-lambda-jest
 
 ### Recommendations
 
-Some recommondations to speed up jest integration tests by avoiding double bundeling of your Lambdas by Jest and serverless-aws-lambda.
+Some recommendations to speed up jest integration tests by avoiding double bundeling of your Lambdas by Jest and serverless-aws-lambda.
 
 - Use separate jest config files for you Unit and Integration test, example:
   - `jest.it.config.js` (Integration Test)
   - `jest.ut.config.js` (Unit Test)
 - Do not write your Integration Tests inside the same (sub) directory as your Lambda handlers
 - Specify your Integrations Test root directory inside your `jest.it.config.js`'s `rootDir`.
+- Set jestPlugin at the end of your defineConfig plugins array.
 
 ---
 
@@ -41,6 +42,11 @@ module.exports = defineConfig({
     jestPlugin({
       configFile: "./jest.it.config.js",
       oneshot: false,
+      coverage: {
+        outDir: "./coverage/",
+        json: true,
+        badge: true,
+      },
     }),
   ],
 });
@@ -50,5 +56,5 @@ module.exports = defineConfig({
 
 - serverless-aws-lambda's `LOCAL_PORT` env variable is injected into process.env of your test files which could be used to make offline request against the local server.
 - `oneshot` option could be used inside your CI/CD pipeline to launch Integrations Tests and exit the process after the first test sequence. Node Process will exit with `0` code, or `1` if Jest tests fails.
-- use `coverage` option to generate coverage result json file.
+- use `coverage` option to generate coverage result json file and svg badge.
 - See an [example project](example)

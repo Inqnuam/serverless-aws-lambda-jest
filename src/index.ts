@@ -1,15 +1,19 @@
 import type { SlsAwsLambdaPlugin } from "serverless-aws-lambda/defineConfig";
-import { writeFile, access, mkdir } from "fs/promises";
+import { writeFile } from "fs/promises";
+import { accessSync, mkdirSync, writeFileSync } from "fs";
 import path from "path";
 const jest = require("jest");
 const pluginDir = `${process.cwd()}/node_modules/serverless-aws-lambda-jest/`;
-import { eventParser, calculateCoverage, findEndpoint } from "./utils";
+import { calculateCoverage, handleInvoke } from "./utils";
+import { generateBadge } from "./badge";
 
 interface IJestPluginOptions {
   configFile: string;
   oneshot?: boolean;
   coverage?: {
-    outDir?: string;
+    outDir: string;
+    json?: boolean;
+    badge?: boolean;
   };
 }
 
@@ -22,10 +26,12 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
         const lambdaConverage = {
           success: false,
           coverage: 0,
-          endpoints: {
-            alb: [],
-            apg: [],
-          },
+          alb: [],
+          apg: [],
+          s3: [],
+          sns: [],
+          sqs: [],
+          ddb: [],
         };
 
         l.endpoints.forEach((e) => {
@@ -36,26 +42,56 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
           e.methods.forEach((m) => {
             c.methods[m] = false;
           });
-          lambdaConverage.endpoints[e.kind].push(c);
+          lambdaConverage[e.kind].push(c);
+        });
+
+        l.sns.forEach((sns) => {
+          lambdaConverage.sns.push({
+            success: false,
+            event: sns,
+          });
+        });
+        l.ddb.forEach((ddb) => {
+          lambdaConverage.ddb.push({
+            success: false,
+            event: ddb,
+          });
         });
 
         coverage[l.name] = lambdaConverage;
 
         // @ts-ignore
-        l.onInvoke((event: any) => {
-          const parsedEvent = eventParser(event);
-          if (parsedEvent) {
-            //  { path: '/lambda', method: 'GET', kind: 'apg' }
-            const foundEndpoint = coverage[l.name].endpoints[parsedEvent.kind].find((x: any) => findEndpoint(x.paths, parsedEvent.path));
-
-            if (parsedEvent.method in foundEndpoint.methods) {
-              foundEndpoint.methods[parsedEvent.method] = true;
-            } else if ("ANY" in foundEndpoint.methods) {
-              foundEndpoint.methods.ANY = true;
-            }
+        l.onInvoke((event: any, info: any) => {
+          if (!event || !info) {
+            return;
           }
+          handleInvoke(coverage[l.name], event, info);
         });
       });
+    },
+    onExit: function (code) {
+      if (options.coverage) {
+        if (options.coverage.outDir) {
+          const coverageResult = calculateCoverage(coverage);
+
+          const outdir = path.resolve(options.coverage.outDir);
+
+          try {
+            accessSync(outdir);
+          } catch (error) {
+            mkdirSync(outdir, { recursive: true });
+          }
+
+          if (options.coverage.json) {
+            writeFileSync(`${outdir}/jest-it-coverage.json`, JSON.stringify(coverageResult), { encoding: "utf-8" });
+          }
+          if (options.coverage.badge) {
+            writeFileSync(`${outdir}/jest-it-coverage.svg`, generateBadge(coverageResult.coverage), { encoding: "utf-8" });
+          }
+        } else {
+          console.log("coverage 'outDir' is required");
+        }
+      }
     },
     offline: {
       onReady: async function (port) {
@@ -80,19 +116,6 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
             },
             ["."]
           );
-
-          const coverageResult = calculateCoverage(coverage);
-
-          if (options.coverage?.outDir) {
-            const outdir = path.resolve(options.coverage.outDir);
-            try {
-              await access(outdir);
-            } catch (error) {
-              await mkdir(outdir, { recursive: true });
-            }
-
-            await writeFile(`${outdir}/jest-it-coverage.json`, JSON.stringify(coverageResult), { encoding: "utf-8" });
-          }
 
           if (options.oneshot) {
             this.stop();

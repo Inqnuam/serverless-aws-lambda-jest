@@ -1,30 +1,33 @@
-export const eventParser = (event: any) => {
-  let parsedEvent: any = {
-    path: event.path ?? event.requestContext?.http?.path,
-    method: event.httpMethod ?? event.requestContext?.http?.method,
-    kind: event?.requestContext?.elb ? "alb" : event.requestContext?.accountId ? "apg" : null,
-  };
-  if (parsedEvent.kind) {
-    return parsedEvent;
-  }
+export const findReqMethod = (event: any) => {
+  return event.httpMethod ?? event.requestContext?.http?.method;
 };
 
-export const findEndpoint = (paths: string[], reqPath: string) => {
-  const found = paths.includes(reqPath);
+export const handleInvoke = (lambda: any, event: any, info: any) => {
+  if (info.kind == "alb" || info.kind == "apg") {
+    const foundEndpoint = lambda[info.kind].find((x) => x.paths == info.paths);
+    const method = findReqMethod(event);
 
-  if (found) {
-    return true;
-  } else {
-    const found = paths.find((p) => {
-      const AlbAnyPathMatch = p.replace(/\*/g, ".*").replace(/\//g, "\\/");
-      const ApgPathPartMatch = p.replace(/\{[\w.:-]+\+?\}/g, ".*").replace(/\//g, "\\/");
+    if (method) {
+      if (method in foundEndpoint.methods) {
+        foundEndpoint.methods[method] = true;
+      } else if ("ANY" in foundEndpoint.methods) {
+        foundEndpoint.methods.ANY = true;
+      }
+    }
+  } else if (info.kind == "sns") {
+    const foundSns = lambda.sns.find((x) => x.event == info.event);
 
-      const AlbPattern = new RegExp(`^${AlbAnyPathMatch}$`, "g");
-      const ApgPattern = new RegExp(`^${ApgPathPartMatch}$`, "g");
+    if (foundSns) {
+      foundSns.success = true;
+    }
+  } else if (info.kind == "ddb") {
+    const { TableName, filterPattern } = info.event;
+    // TODO: add filterPattern coverage
+    const foundDdb = lambda.ddb.find((x: any) => x.event.TableName == TableName);
 
-      return AlbPattern.test(reqPath) || ApgPattern.test(reqPath);
-    });
-    return found;
+    if (foundDdb) {
+      foundDdb.success = true;
+    }
   }
 };
 
@@ -34,9 +37,10 @@ export const calculateCoverage = (coverage: any) => {
   let result: any = {};
   for (const [lambdaName, v] of Object.entries(coverage)) {
     result[lambdaName] = {};
-    const { alb, apg } = (v as unknown as any).endpoints;
 
-    if (alb) {
+    const { alb, apg, sns, ddb } = v as unknown as any;
+
+    if (alb.length) {
       let albTotal = 0;
       let albSuccess = 0;
       alb.forEach((a) => {
@@ -46,14 +50,16 @@ export const calculateCoverage = (coverage: any) => {
       });
       total += albTotal;
       success += albSuccess;
-
-      result[lambdaName].alb = {
-        total: albTotal,
-        success: albSuccess,
-      };
+      if (albTotal) {
+        result[lambdaName].alb = {
+          total: albTotal,
+          success: albSuccess,
+          endpoints: alb,
+        };
+      }
     }
 
-    if (apg) {
+    if (apg.length) {
       let apgTotal = 0;
       let apgSuccess = 0;
 
@@ -67,10 +73,33 @@ export const calculateCoverage = (coverage: any) => {
       total += apgTotal;
       success += apgSuccess;
 
-      result[lambdaName].apg = {
-        total: apgTotal,
-        success: apgSuccess,
+      if (apgTotal) {
+        result[lambdaName].apg = {
+          total: apgTotal,
+          success: apgSuccess,
+          endpoints: apg,
+        };
+      }
+    }
+
+    if (sns.length) {
+      result[lambdaName].sns = {
+        total: sns.length,
+        success: sns.filter((x) => x.success).length,
+        events: sns,
       };
+      total += result[lambdaName].sns.total;
+      success += result[lambdaName].sns.success;
+    }
+
+    if (ddb.length) {
+      result[lambdaName].ddb = {
+        total: ddb.length,
+        success: ddb.filter((x) => x.success).length,
+        events: ddb,
+      };
+      total += result[lambdaName].ddb.total;
+      success += result[lambdaName].ddb.success;
     }
   }
 
