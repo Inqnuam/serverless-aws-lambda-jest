@@ -18,7 +18,7 @@ export const handleInvoke = (lambda: any, event: any, info: any) => {
     const foundSns = lambda.sns.find((x) => x.event == info.event);
 
     if (foundSns) {
-      foundSns.success = true;
+      foundSns.done = true;
     }
   } else if (info.kind == "ddb") {
     const { TableName, filterPattern } = info.event;
@@ -26,19 +26,25 @@ export const handleInvoke = (lambda: any, event: any, info: any) => {
     const foundDdb = lambda.ddb.find((x: any) => x.event.TableName == TableName);
 
     if (foundDdb) {
-      foundDdb.success = true;
+      foundDdb.done = true;
+    }
+  } else if (info.kind == "s3") {
+    const foundDdb = lambda.s3.find((x: any) => x.event == info.event);
+
+    if (foundDdb) {
+      foundDdb.done = true;
     }
   }
 };
 
 export const calculateCoverage = (coverage: any) => {
   let total = 0;
-  let success = 0;
+  let done = 0;
   let result: any = {};
   for (const [lambdaName, v] of Object.entries(coverage)) {
     result[lambdaName] = {};
 
-    const { alb, apg, sns, ddb } = v as unknown as any;
+    const { alb, apg, s3, sns, ddb } = v as unknown as any;
 
     if (alb.length) {
       let albTotal = 0;
@@ -49,11 +55,11 @@ export const calculateCoverage = (coverage: any) => {
         albSuccess += values.filter((x) => x === true).length;
       });
       total += albTotal;
-      success += albSuccess;
+      done += albSuccess;
       if (albTotal) {
         result[lambdaName].alb = {
           total: albTotal,
-          success: albSuccess,
+          done: albSuccess,
           endpoints: alb,
         };
       }
@@ -71,12 +77,12 @@ export const calculateCoverage = (coverage: any) => {
       });
 
       total += apgTotal;
-      success += apgSuccess;
+      done += apgSuccess;
 
       if (apgTotal) {
         result[lambdaName].apg = {
           total: apgTotal,
-          success: apgSuccess,
+          done: apgSuccess,
           endpoints: apg,
         };
       }
@@ -85,28 +91,38 @@ export const calculateCoverage = (coverage: any) => {
     if (sns.length) {
       result[lambdaName].sns = {
         total: sns.length,
-        success: sns.filter((x) => x.success).length,
+        done: sns.filter((x) => x.done).length,
         events: sns,
       };
       total += result[lambdaName].sns.total;
-      success += result[lambdaName].sns.success;
+      done += result[lambdaName].sns.done;
     }
 
     if (ddb.length) {
       result[lambdaName].ddb = {
         total: ddb.length,
-        success: ddb.filter((x) => x.success).length,
+        done: ddb.filter((x) => x.done).length,
         events: ddb,
       };
       total += result[lambdaName].ddb.total;
-      success += result[lambdaName].ddb.success;
+      done += result[lambdaName].ddb.done;
+    }
+
+    if (s3.length) {
+      result[lambdaName].s3 = {
+        total: s3.length,
+        done: s3.filter((x) => x.done).length,
+        events: s3,
+      };
+      total += result[lambdaName].s3.total;
+      done += result[lambdaName].s3.done;
     }
   }
 
   return {
     total,
-    success,
-    coverage: Math.round((success / total) * 100),
+    done,
+    coverage: Math.round((done / total) * 100),
     result,
   };
 };

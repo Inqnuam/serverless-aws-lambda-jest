@@ -9,7 +9,7 @@ import { generateBadge } from "./badge";
 
 interface IJestPluginOptions {
   configFile: string;
-  oneshot?: boolean;
+  oneshot?: boolean | { delay: number };
   coverage?: {
     outDir: string;
     json?: boolean;
@@ -24,7 +24,7 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
     onInit: function () {
       this.lambdas.forEach((l) => {
         const lambdaConverage = {
-          success: false,
+          done: false,
           coverage: 0,
           alb: [],
           apg: [],
@@ -47,14 +47,20 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
 
         l.sns.forEach((sns) => {
           lambdaConverage.sns.push({
-            success: false,
+            done: false,
             event: sns,
           });
         });
         l.ddb.forEach((ddb) => {
           lambdaConverage.ddb.push({
-            success: false,
+            done: false,
             event: ddb,
+          });
+        });
+        l.s3.forEach((s3) => {
+          lambdaConverage.s3.push({
+            done: false,
+            event: s3,
           });
         });
 
@@ -118,8 +124,16 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
           );
 
           if (options.oneshot) {
-            this.stop();
-            process.exit(result.results.success ? 0 : 1);
+            let timeout = 0;
+
+            if (typeof options.oneshot == "object" && options.oneshot.delay) {
+              timeout = options.oneshot.delay * 1000;
+            }
+
+            setTimeout(() => {
+              this.stop();
+              process.exit(result.results.success ? 0 : 1);
+            }, timeout);
           }
         } catch (error) {
           console.log(error);
