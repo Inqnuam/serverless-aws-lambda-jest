@@ -5,7 +5,7 @@
 ### Requirements
 
 - [serverless-aws-lambda](https://github.com/Inqnuam/serverless-aws-lambda)
-- jest
+- Jest
 
 ## Installation
 
@@ -58,6 +58,7 @@ Supported events
 
 - Application Load Balancer (alb)
 - API Gateway (http, httpApi)
+- DynamoDB Streams
 - S3
 - SNS
 
