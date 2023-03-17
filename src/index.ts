@@ -51,6 +51,12 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
             event: sns,
           });
         });
+        l.sqs.forEach((sqs) => {
+          lambdaConverage.sqs.push({
+            done: false,
+            event: sqs,
+          });
+        });
         l.ddb.forEach((ddb) => {
           lambdaConverage.ddb.push({
             done: false,
