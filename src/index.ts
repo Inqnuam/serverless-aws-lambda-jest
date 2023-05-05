@@ -5,10 +5,8 @@ import { calculateCoverage, handleInvoke } from "./utils";
 import { generateBadge } from "./badge";
 import { TestRequestListener } from "./requestListener";
 import type { supportedService } from "./requestListener";
-import jest from "jest";
-import { readInitialOptions } from "jest-config";
 // @ts-ignore
-import actualDirName from "resolvedPaths";
+import { actualDirName, jest, readInitialOptions } from "resolvedPaths";
 
 const cwd = process.cwd();
 const setupFile = `${actualDirName.slice(0, -5)}/resources/setup.js`;

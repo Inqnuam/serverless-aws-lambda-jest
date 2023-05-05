@@ -1,4 +1,4 @@
-import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
+const { SNSClient, PublishCommand } = require("@aws-sdk/client-sns");
 
 const client = new SNSClient({
   region: "eu-west-3",
