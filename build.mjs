@@ -3,21 +3,34 @@ import { execSync } from "child_process";
 
 const shouldWatch = process.env.DEV == "true";
 
-const ctx = await esbuild[shouldWatch ? "context" : "build"]({
+const cwd = process.cwd();
+
+const commonDirName = `${cwd}/src/cjs.ts`;
+const esmDirName = `${cwd}/src/esm.ts`;
+
+const buildOptions = {
   entryPoints: ["./src/index.ts"],
   platform: "node",
   format: "cjs",
-  target: "ES6",
+  target: "es6",
   bundle: true,
   minify: !shouldWatch,
-  external: ["esbuild", "jest"],
+  external: ["esbuild", "jest", "jest-config"],
   outdir: "dist",
   plugins: [
     {
       name: "dummy",
       setup(build) {
+        const { format } = build.initialOptions;
+
+        build.onResolve({ filter: /^resolvedPaths$/ }, (args) => {
+          return {
+            path: format == "esm" ? esmDirName : commonDirName,
+          };
+        });
+
         build.onEnd(() => {
-          console.log("Compiler rebuild", new Date().toLocaleString());
+          console.log("Build", format, new Date().toLocaleString());
           try {
             execSync("tsc");
           } catch (error) {
@@ -27,8 +40,12 @@ const ctx = await esbuild[shouldWatch ? "context" : "build"]({
       },
     },
   ],
-});
+};
+
+const cjs = await esbuild[shouldWatch ? "context" : "build"](buildOptions);
+const esm = await esbuild[shouldWatch ? "context" : "build"]({ ...buildOptions, format: "esm", outExtension: { ".js": ".mjs" }, target: "ES2020" });
 
 if (shouldWatch) {
-  await ctx.watch();
+  await cjs.watch();
+  await esm.watch();
 }

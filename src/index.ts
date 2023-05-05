@@ -1,11 +1,18 @@
 import type { SlsAwsLambdaPlugin } from "serverless-aws-lambda/defineConfig";
-import { writeFile } from "fs/promises";
 import { accessSync, mkdirSync, writeFileSync } from "fs";
 import path from "path";
-const jest = require("jest");
-const pluginDir = `${process.cwd()}/node_modules/serverless-aws-lambda-jest/`;
 import { calculateCoverage, handleInvoke } from "./utils";
 import { generateBadge } from "./badge";
+import { TestRequestListener } from "./requestListener";
+import type { supportedService } from "./requestListener";
+import jest from "jest";
+import { readInitialOptions } from "jest-config";
+// @ts-ignore
+import actualDirName from "resolvedPaths";
+
+const cwd = process.cwd();
+const setupFile = `${actualDirName.slice(0, -5)}/resources/setup.js`;
+const coverage: any = {};
 
 interface IJestPluginOptions {
   configFile: string;
@@ -17,11 +24,25 @@ interface IJestPluginOptions {
   };
 }
 
-const coverage: any = {};
 const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
+  const eventListener = new TestRequestListener();
+  let outdir = `${cwd}/.aws_lambda/`;
+  const getOutDir = {
+    name: "jest-get-outdir",
+    setup: async (build) => {
+      if (build.initialOptions.outdir) {
+        outdir = path.resolve(build.initialOptions.outdir);
+      }
+    },
+  };
   return {
     name: "jest-plugin",
     onInit: function () {
+      if (Array.isArray(this.config.esbuild.plugins)) {
+        this.config.esbuild.plugins.push(getOutDir);
+      } else {
+        this.config.esbuild.plugins = [getOutDir];
+      }
       this.lambdas.forEach((l) => {
         const lambdaConverage = {
           done: false,
@@ -72,12 +93,29 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
 
         coverage[l.name] = lambdaConverage;
 
-        // @ts-ignore
-        l.onInvoke((event: any, info: any) => {
+        l.onInvoke((event, info) => {
           if (!event || !info) {
             return;
           }
           handleInvoke(coverage[l.name], event, info);
+        });
+
+        l.onInvokeSuccess((input, output, info) => {
+          if (input && typeof input == "object" && info) {
+            const kind: supportedService = info.kind;
+            if (eventListener.support.has(kind)) {
+              eventListener.handleInvokeResponse(kind, l.name, input, output, true);
+            }
+          }
+        });
+
+        l.onInvokeError((input, error, info) => {
+          if (input && typeof input == "object" && info) {
+            const kind: supportedService = info.kind;
+            if (eventListener.support.has(kind)) {
+              eventListener.handleInvokeResponse(kind, l.name, input, error, false);
+            }
+          }
         });
       });
     },
@@ -105,7 +143,44 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
         }
       }
     },
+
     offline: {
+      request: [
+        {
+          filter: "/__jest_plugin/",
+          callback: async function (req, res) {
+            const { searchParams } = new URL(req.url, "http://localhost:3000");
+
+            const kind = searchParams.get("kind") as supportedService;
+            const id = searchParams.get("id");
+            const lambdaName = searchParams.get("lambdaName");
+
+            const listener = (success: boolean, output: any, foundLambdaName: string) => {
+              if (!success) {
+                res.statusCode = 400;
+              }
+
+              if (!lambdaName || lambdaName == foundLambdaName) {
+                eventListener.removeListener(id, listener);
+                res.end(output ? JSON.stringify(output) : undefined);
+              }
+            };
+            eventListener.on(id, listener);
+
+            const foundEvent = eventListener.getPendingRequest(kind, id, lambdaName);
+            if (foundEvent) {
+              eventListener.removeListener(id, listener);
+              const output = foundEvent.error ?? foundEvent.output;
+              if (foundEvent.error) {
+                res.statusCode = 400;
+              }
+              res.end(output ? JSON.stringify(output) : undefined);
+            } else {
+              eventListener.registerRequest(kind, id, lambdaName);
+            }
+          },
+        },
+      ],
       onReady: async function (port) {
         process.env.LOCAL_PORT = String(port);
 
@@ -113,21 +188,33 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
           throw new Error("jest config file path is required");
         }
 
-        const confFile = require(path.resolve(options.configFile));
-        const roots = [".", pluginDir];
-        if (confFile.roots) {
-          roots.push(...confFile.roots);
+        const confFilePath = path.resolve(options.configFile);
+        const { config } = await readInitialOptions(confFilePath);
+
+        const setupFiles = config.setupFiles ?? [];
+        setupFiles.push(setupFile);
+        config.setupFiles = setupFiles;
+        if (options.oneshot) {
+          config.watch = false;
+          config.watchAll = false;
         }
+
+        if (!config.rootDir) {
+          throw new Error("jest config must include 'rootDir'");
+        }
+
+        const initialRootDir = config.rootDir;
+        config.rootDir = ".";
+        const roots = [initialRootDir];
+        if (config.roots) {
+          roots.push(...config.roots.map((x) => path.join(initialRootDir, x)));
+        }
+        roots.push(outdir);
+        config.roots = roots;
+
         try {
-          const result = await jest.runCLI(
-            {
-              ...confFile,
-              watch: false,
-              watchAll: !options.oneshot,
-              roots,
-            },
-            ["."]
-          );
+          // @ts-ignore
+          const result = await jest.runCLI(config, [config.rootDir]);
 
           if (options.oneshot) {
             let timeout = 0;
@@ -142,19 +229,39 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
             }, timeout);
           }
         } catch (error) {
-          console.log(error);
+          console.error(error);
           this.stop();
           process.exit(1);
         }
       },
     },
-    buildCallback: async function (result, isRebuild) {
-      if (isRebuild) {
-        writeFile(`${pluginDir}/watch.js`, Math.random().toString());
-      }
-    },
   };
 };
+
+declare global {
+  /**
+   * @param {string} messageId MessageId returned by AWS SDK SQS Client's `SendMessageCommand` or from `SendMessageBatchCommand`'s Success MessageId.
+   * @param {string} lambdaName consumer name if SQS will be consumed by multiple Lambdas.
+   */
+  const sqsResponse: (messageId: string, lambdaName?: string) => Promise<any>;
+
+  /**
+   * @param {string} messageId MessageId returned by AWS SDK SNS Client's `PublishCommand` or from `PublishBatchCommand`'s Success MessageId.
+   * @param {string} lambdaName consumer name if SNS will be consumed by multiple Lambdas.
+   */
+  const snsResponse: (messageId: string, lambdaName?: string) => Promise<any>;
+
+  /**
+   * @param {any} identifier DynamoDB Item identifier.
+   * Example: {id:{N: 12}}.
+   * @param {string} lambdaName consumer name if SNS will be consumed by multiple Lambdas.
+   */
+  const dynamoResponse: (identifier: { [key: string]: any }, lambdaName?: string) => Promise<any>;
+  /**
+   * serverless-aws-lambda local server port
+   */
+  const LOCAL_PORT: number;
+}
 
 export default jestPlugin;
 export { jestPlugin };
