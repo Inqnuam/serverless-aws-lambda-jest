@@ -131,7 +131,7 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
           }
 
           if (options.coverage.json) {
-            writeFileSync(`${outdir}/jest-it-coverage.json`, JSON.stringify(coverageResult), { encoding: "utf-8" });
+            writeFileSync(`${outdir}/jest-it-coverage.json`, JSON.stringify(coverageResult, null, 2), { encoding: "utf-8" });
           }
           if (options.coverage.badge) {
             writeFileSync(`${outdir}/jest-it-coverage.svg`, generateBadge(coverageResult.coverage), { encoding: "utf-8" });
@@ -210,26 +210,36 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
         roots.push(outdir);
         config.roots = roots;
 
-        try {
-          // @ts-ignore
-          const result = await jest.runCLI(config, [config.rootDir]);
+        const startTestRunner = async () => {
+          try {
+            const result = await jest.runCLI(config, [config.rootDir]);
 
-          if (options.oneshot) {
-            let timeout = 0;
+            if (options.oneshot) {
+              let timeout = 0;
 
-            if (typeof options.oneshot == "object" && options.oneshot.delay) {
-              timeout = options.oneshot.delay * 1000;
+              if (typeof options.oneshot == "object" && options.oneshot.delay) {
+                timeout = options.oneshot.delay * 1000;
+              }
+
+              setTimeout(() => {
+                this.stop();
+                process.exit(result.results.success ? 0 : 1);
+              }, timeout);
             }
-
-            setTimeout(() => {
-              this.stop();
-              process.exit(result.results.success ? 0 : 1);
-            }, timeout);
+          } catch (error) {
+            console.error(error);
+            this.stop();
+            process.exit(1);
           }
-        } catch (error) {
-          console.error(error);
-          this.stop();
-          process.exit(1);
+        };
+
+        const ddbPlugin = this.options.plugins?.find((x) => x.name == "ddblocal-stream");
+
+        if (ddbPlugin) {
+          console.log("Waiting for DynamoDB Local Streams plugin to initialize...");
+          ddbPlugin.pluginData.onReady(startTestRunner);
+        } else {
+          await startTestRunner();
         }
       },
     },
@@ -252,7 +262,7 @@ declare global {
   /**
    * @param {any} identifier DynamoDB Item identifier.
    * Example: {id:{N: 12}}.
-   * @param {string} lambdaName consumer name if SNS will be consumed by multiple Lambdas.
+   * @param {string} lambdaName consumer name if Stream will be consumed by multiple Lambdas.
    */
   const dynamoResponse: (identifier: { [key: string]: any }, lambdaName?: string) => Promise<any>;
   /**
