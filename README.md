@@ -52,6 +52,41 @@ module.exports = defineConfig({
 });
 ```
 
+### Testing async events
+
+The plugin exposes multiple global functions to wait for handler async invokation responses.
+
+- [sqsResponse](src/index.ts#L254)
+- [snsResponse](src/index.ts#L260)
+- [s3Response](src/index.ts#L266)
+- [dynamoResponse](src/index.ts#L273)
+
+Simple example of implementation for a SQS event:
+
+```ts
+import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
+const client = new SQSClient({
+  region: "eu-west-3",
+  endpoint: `http://localhost:${process.env.LOCAL_PORT}/@sqs`,
+});
+const cmd = new SendMessageCommand({
+  QueueUrl: "MyQueueName",
+  MessageBody: JSON.stringify({
+    hello: {
+      message: "world",
+      firstVisit: true,
+    },
+  }),
+});
+test("Single SQS", async () => {
+  const res = await client.send(cmd);
+  const handlerResponse = await sqsResponse(res.MessageId);
+  expect(handlerResponse.success).toBe(true);
+});
+```
+
+see [more examples](examples).
+
 ### Coverage
 
 Supported events
@@ -61,6 +96,7 @@ Supported events
 - DynamoDB Streams
 - S3
 - SNS
+- SQS
 
 ### Notes
 

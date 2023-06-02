@@ -44,6 +44,15 @@ global.snsResponse = async (id, lambdaName) => {
   return __jest_req(query);
 };
 
+global.s3Response = async (id, lambdaName) => {
+  let query = `kind=s3&id=${id}`;
+  if (lambdaName) {
+    query += `&lambdaName=${lambdaName}`;
+  }
+
+  return __jest_req(query);
+};
+
 global.dynamoResponse = async (identifier, lambdaName) => {
   let sortedKeys = {};
   Object.keys(identifier)

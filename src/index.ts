@@ -233,7 +233,7 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
           }
         };
 
-        const ddbPlugin = this.options.plugins?.find((x) => x.name == "ddblocal-stream");
+        const ddbPlugin = this.options.plugins?.find((x: SlsAwsLambdaPlugin) => x.name == "ddblocal-stream") as SlsAwsLambdaPlugin;
 
         if (ddbPlugin) {
           console.log("Waiting for DynamoDB Local Streams plugin to initialize...");
@@ -258,6 +258,12 @@ declare global {
    * @param {string} lambdaName consumer name if SNS will be consumed by multiple Lambdas.
    */
   const snsResponse: (messageId: string, lambdaName?: string) => Promise<any>;
+
+  /**
+   * @param {string} requestId requestId returned by AWS SDK S3 Client's send() response `$metadata`.
+   * @param {string} lambdaName consumer name if S3 event will be consumed by multiple Lambdas.
+   */
+  const s3Response: (requestId: string, lambdaName?: string) => Promise<any>;
 
   /**
    * @param {any} identifier DynamoDB Item identifier.
