@@ -19,6 +19,7 @@ interface IJestPluginOptions {
     outDir: string;
     json?: boolean;
     badge?: boolean;
+    threshold?: number;
   };
 }
 
@@ -33,6 +34,7 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
       }
     },
   };
+
   return {
     name: "jest-plugin",
     onInit: function () {
@@ -120,8 +122,13 @@ const jestPlugin = (options: IJestPluginOptions): SlsAwsLambdaPlugin => {
     onExit: function (code) {
       if (options.coverage) {
         if (options.coverage.outDir) {
+          const threshold = options.coverage.threshold;
           const coverageResult = calculateCoverage(coverage);
 
+          if (threshold && code == 0 && coverageResult.coverage < threshold) {
+            process.exitCode = 1;
+            console.log(`Covered events: ${coverageResult.coverage}%\nThreshold: ${threshold}%`);
+          }
           const outdir = path.resolve(options.coverage.outDir);
 
           try {
